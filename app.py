@@ -29,7 +29,7 @@ with gr.Blocks(
             gr.Markdown("#### Choose a model, and start chatting") 
             chat_model_name = gr.Radio(
                 show_label=False, 
-                choices=["gemini-2.5-pro-preview-03-25", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"], 
+                choices=["gemini-2.5-pro-exp-03-25", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"], 
                 value="gemini-2.0-flash"
             )
             with gr.Group():
