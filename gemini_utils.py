@@ -3,7 +3,7 @@ from google.genai import types
 import time
 import os
 from dotenv import load_dotenv
-from typing import List, Dict, Any
+from typing import Tuple, List, Dict, Any, AsyncIterator
 from gradio import ChatMessage, Error, MultimodalTextbox
 import hashlib
 from pathlib import Path
@@ -29,36 +29,31 @@ def generate_file_name(file_path: str) -> str:
     return formatted_id
 
 
-def file_exists(name: str) -> bool:
-    existing_files = []
-    for f in client.files.list():
-        existing_files.append(f.name.split("/")[-1])
-    if name in existing_files:
-        return True
-    return False
+async def file_exists(name: str) -> bool:
+    return any(f.name.split("/")[-1] == name for f in await client.aio.files.list())
 
 
-def upload_files(file_paths: List[Path]) -> List[str]:
+async def upload_files(file_paths: List[Path]) -> List[str]:
     file_names = []
     for path in file_paths:
         # Only lowercase alphanumeric characters and dashes allowed, generating a unique 8-character file name
         file_name = generate_file_name(file_path=str(path))
-        if not file_exists(name=file_name):
-            file = client.files.upload(file=path, config={"name": file_name, "display_name": path.name})
+        if not await file_exists(name=file_name):
+            file = await client.aio.files.upload(file=path, config={"name": file_name, "display_name": path.name})
             while file.state.name == "PROCESSING":
                 time.sleep(2)
-                file = client.files.get(name=file_name)
+                file = await client.aio.files.get(name=file_name)
         file_names.append(file_name)
     return file_names
 
 
-def _get_content(_message: Dict[str, Any]) -> types.Content|types.File|None:
+async def _get_content(_message: Dict[str, Any]) -> types.Content|types.File|None:
     message_role = "model" if _message["role"] == "assistant" else "user"
 
     if isinstance(_message["content"], tuple):
         path = Path(_message["content"][0])
-        files = upload_files([path])
-        content = client.files.get(name=files[0])
+        files = await upload_files([path])
+        content = await client.aio.files.get(name=files[0])
 
     elif isinstance(_message["content"], str):
         content = types.Content(role=message_role, parts=[types.Part.from_text(text=_message["content"])])
@@ -69,30 +64,37 @@ def _get_content(_message: Dict[str, Any]) -> types.Content|types.File|None:
     return content
 
 
-def chat(model_name: str, _history: List[ChatMessage], query: MultimodalTextbox) -> List[ChatMessage]|None:
+def add_query_to_history(_history: List[ChatMessage], query: MultimodalTextbox) -> Tuple[List[ChatMessage], str]:
+    if query["files"]:
+        _history.extend([
+            ChatMessage(role="user", content={"path": file}) for file in query["files"]
+        ])
+    if query["text"]:
+        _history.append(
+            ChatMessage(role="user", content=query["text"])
+        )
+    return _history, ""
+
+
+async def async_chat_stream(model_name: str, _history: List[ChatMessage]) -> AsyncIterator[List[ChatMessage]]:
     contents = []
 
     for message in _history:
-        content = _get_content(message)
+        content = await _get_content(message)
         if content is not None:
             contents.append(content)
-        
-    _history.extend([ChatMessage(role="user", content={"path": file}) for file in query["files"]])
-    
-    files = upload_files([Path(i) for i in query["files"]])
-    if files:
-        contents.extend([client.files.get(name=file) for file in files])
-
-    contents.append(types.UserContent(parts=types.Part.from_text(text=query["text"])))
-    _history.append(ChatMessage(role="user", content=query["text"]))
 
     try:
-        response = client.models.generate_content(
+        response = await client.aio.models.generate_content_stream(
             model=model_name, 
             contents=contents
         )
-        _history.append(ChatMessage(role="assistant", content=response.text))
-        return _history
-    
+
+        _history.append(ChatMessage(role="assistant", content=""))
+
+        async for chunk in response:
+            _history[-1].content += chunk.text
+            yield _history
+
     except Exception as e:
         raise Error(message=str(e))

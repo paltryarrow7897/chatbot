@@ -1,5 +1,5 @@
 import gradio as gr
-from gemini_utils import chat, GEMINI_FILE_TYPES
+from gemini_utils import add_query_to_history, async_chat_stream, GEMINI_FILE_TYPES
 from dotenv import load_dotenv
 import os
 
@@ -45,24 +45,21 @@ with gr.Blocks(
                     placeholder="Press ENTER to chat, Shift+ENTER for line break"
                 )
         chat_query.submit(
-            fn=chat,
-            inputs=[chat_model_name, chat_history, chat_query], 
-            outputs=chat_history
+            fn=add_query_to_history, 
+            inputs=[chat_history, chat_query], 
+            outputs=[chat_history, chat_query]
         ).then(
-            fn=clear_chat_query, 
-            inputs=None, 
-            outputs=chat_query
+            fn=async_chat_stream, 
+            inputs=[chat_model_name, chat_history], 
+            outputs=chat_history
         )
 
     with gr.Row():
         gr.Markdown("### Powered by [Gemini API](https://ai.google.dev/)")
 
-demo.queue().launch(
+demo.queue(default_concurrency_limit=10).launch(
     show_api=False, 
     show_error=False, 
     root_path="/llm-demo", 
-    server_port=7860,
-    ssl_certfile="fullchain.pem",
-    ssl_keyfile="privkey.pem",
-    ssl_verify=False
+    server_port=7860
 )
