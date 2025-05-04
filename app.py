@@ -11,16 +11,11 @@ def clear_chat_query() -> gr.Textbox:
     return gr.Textbox(value=None)
 
 
-def issue_info():
-    return gr.Info(message="Please wait until Status changes to ACTIVE")
-
-
 with gr.Blocks(
     title="LLM Interactive Showcase", 
     theme=os.environ["GR_THEME_MIKU"]
     # theme="JohnSmith9982/small_and_pretty"
 ) as demo:
-    
     with gr.Row():
         gr.Markdown("### 🛑IMPORTANT🛑: Do NOT upload potentially sensitive information.")
 
